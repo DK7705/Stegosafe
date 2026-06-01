@@ -1,0 +1,33 @@
+[package]
+name = "stegosafe-crypto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Opt out of the workspace — fuzz crates must be independent
+[workspace]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.stegosafe-crypto]
+path = ".."
+
+# ---------------------------------------------------------------------------
+# Fuzz targets
+# ---------------------------------------------------------------------------
+
+[[bin]]
+name = "fuzz_decrypt"
+path = "fuzz_targets/fuzz_decrypt.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_kdf"
+path = "fuzz_targets/fuzz_kdf.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_nonce"
+path = "fuzz_targets/fuzz_nonce.rs"
+doc = false

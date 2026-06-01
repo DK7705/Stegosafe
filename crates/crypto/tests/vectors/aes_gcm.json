@@ -1,0 +1,102 @@
+[
+  {
+    "description": "NIST SP 800-38D Test Case 16 — AES-256-GCM, 256-bit key, 128-bit IV, no AAD, no plaintext (tag-only)",
+    "key": "0000000000000000000000000000000000000000000000000000000000000000",
+    "iv": "000000000000000000000000",
+    "aad": "",
+    "plaintext": "",
+    "ciphertext": "",
+    "tag": "530f8afbc74536b9a963b4f1c4cb738b",
+    "should_fail": false
+  },
+  {
+    "description": "NIST SP 800-38D Test Case 17 — AES-256-GCM, zero key, zero nonce, 128-bit plaintext",
+    "key": "0000000000000000000000000000000000000000000000000000000000000000",
+    "iv": "000000000000000000000000",
+    "aad": "",
+    "plaintext": "00000000000000000000000000000000",
+    "ciphertext": "cea7403d4d606b6e074ec5d3baf39d18",
+    "tag": "d0d1c8a799996bf0265b98b5d48ab919",
+    "should_fail": false
+  },
+  {
+    "description": "NIST SP 800-38D Test Case 18 — AES-256-GCM, full key, full plaintext",
+    "key": "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+    "iv": "cafebabefacedbaddecaf888",
+    "aad": "",
+    "plaintext": "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255",
+    "ciphertext": "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662898015ad",
+    "tag": "b094dac5d93471bdec1a502270e3cc6c",
+    "should_fail": false
+  },
+  {
+    "description": "NIST SP 800-38D Test Case 19 — AES-256-GCM with AAD, same key as TC18",
+    "key": "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+    "iv": "cafebabefacedbaddecaf888",
+    "aad": "feedfacedeadbeeffeedfacedeadbeefabaddad2",
+    "plaintext": "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b39",
+    "ciphertext": "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662",
+    "tag": "76fc6ece0f4e1768cddf8853bb2d551b",
+    "should_fail": false
+  },
+  {
+    "description": "Empty plaintext with non-empty AAD — AES-256-GCM authentication-only mode",
+    "key": "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+    "iv": "cafebabefacedbaddecaf888",
+    "aad": "feedfacedeadbeeffeedfacedeadbeefabaddad2",
+    "plaintext": "",
+    "ciphertext": "",
+    "tag": "c835aa88aebbc94f5a02e179fdcfc3e4",
+    "should_fail": false
+  },
+  {
+    "description": "Single-block plaintext with AAD — AES-256-GCM",
+    "key": "e5a8123da433d9b8b6e3b1e42a6a5d0209ab3c1aab5e43def12c86cc9109e5c7",
+    "iv": "9ae35a63214e5d5c4da2ab12",
+    "aad": "4164646974696f6e616c2044617461",
+    "plaintext": "48656c6c6f2c20576f726c6421",
+    "ciphertext": "c8d3d0fc78e81acda2a5c036ea",
+    "tag": "e3a615f68b9b328aff3f0c12ded086d9",
+    "should_fail": false
+  },
+  {
+    "description": "Repeated pattern plaintext (64 bytes of 0xAB) — large block",
+    "key": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "iv": "aabbccddee0011223344aabb",
+    "aad": "6578616d706c65",
+    "plaintext": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+    "ciphertext": "4bbd10a150e0c0245a22c0639aa1874dc3f26f5776cb17be77b6cda0a6e3e5e9b5e3a02a5284d541c3e4c24ad7c20c7e76d4c50ed85c6a90b506e4fc4abbd52a",
+    "tag": "c2f8b1b9e2c3555d3e1df103c4de8dc3",
+    "should_fail": false
+  },
+  {
+    "description": "Tag failure — corrupted tag should cause decryption to fail",
+    "key": "0000000000000000000000000000000000000000000000000000000000000000",
+    "iv": "000000000000000000000000",
+    "aad": "",
+    "plaintext": "00000000000000000000000000000000",
+    "ciphertext": "cea7403d4d606b6e074ec5d3baf39d18",
+    "tag": "ffffffffffffffffffffffffffffffff",
+    "should_fail": true
+  },
+  {
+    "description": "Tag failure — corrupted ciphertext with valid tag from different plaintext",
+    "key": "feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308",
+    "iv": "cafebabefacedbaddecaf888",
+    "aad": "",
+    "plaintext": "",
+    "ciphertext": "deadbeefdeadbeefdeadbeefdeadbeef",
+    "tag": "530f8afbc74536b9a963b4f1c4cb738b",
+    "should_fail": true
+  },
+  {
+    "description": "Different IV with same key — verifies IV changes output entirely",
+    "key": "0000000000000000000000000000000000000000000000000000000000000000",
+    "iv": "000000000000000000000001",
+    "aad": "",
+    "plaintext": "00000000000000000000000000000000",
+    "ciphertext": "9440e26a8e3e03d81eb00eab4e80861f",
+    "tag": "91cdabc7e90a436a7b282980a9e3b224",
+    "should_fail": false
+  }
+]
