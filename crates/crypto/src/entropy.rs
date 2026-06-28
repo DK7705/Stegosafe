@@ -4,11 +4,12 @@
 //! OS random or `rand::thread_rng()` directly — everything goes through
 //! [`EntropyOracle`].
 //!
-//! # Source hierarchy (priority order)
+//! # Source hierarchy
 //!
-//! 1. **Hardware TRNG** — `rdrand` on x86_64, verified with FIPS 140-3 health check.
-//! 2. **OS entropy pool** — `getrandom` (`BCryptGenRandom` on Windows, `/dev/urandom` on Linux).
-//! 3. **Application-level mixing** — XOR of TRNG and OS bytes, conditioned through SHA-256.
+//! 1. **OS entropy pool** — `getrandom` (`BCryptGenRandom` on Windows, `/dev/urandom` on Linux).
+//! 2. **Hardware TRNG** — optional `rdrand` on x86_64, verified with a startup health check.
+//! 3. **Application-level mixing** — XOR of TRNG and OS bytes when TRNG is available,
+//!    conditioned through SHA-256.
 
 use std::sync::Mutex;
 
@@ -45,9 +46,9 @@ struct OracleState {
 
 /// Single source of truth for all randomness in the system.
 ///
-/// Combines hardware TRNG and OS entropy pool, mixing and conditioning
-/// the output through SHA-256 for belt-and-suspenders security. If one
-/// source is weak, the other covers it.
+/// Uses the OS entropy pool as the mandatory baseline, optionally mixing
+/// hardware TRNG output when it is available, then conditioning the result
+/// through SHA-256.
 ///
 /// # Thread safety
 ///
@@ -67,13 +68,13 @@ pub struct EntropyOracle {
 impl EntropyOracle {
     /// Initialize the entropy oracle, running startup health checks.
     ///
-    /// Returns [`CryptoError::EntropyUnavailable`] only if **no** entropy
-    /// source (neither TRNG nor OS pool) is available.
+    /// Returns [`CryptoError::EntropyUnavailable`] if the OS entropy pool is
+    /// unavailable. Hardware TRNG is supplemental and never replaces the OS pool.
     pub fn init() -> Result<Self, CryptoError> {
         let trng_available = Self::check_trng_available();
         let os_pool_available = Self::check_os_pool();
 
-        if !trng_available && !os_pool_available {
+        if !os_pool_available {
             return Err(CryptoError::EntropyUnavailable);
         }
 
