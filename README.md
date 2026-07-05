@@ -1,6 +1,6 @@
 # Stegosafe — CLI steganography tool
 
-This crate is a minimal steganography CLI built on `stegosafe-crypto`.
+This project is a minimal steganography CLI built on `stegosafe-crypto`.
 
 Usage examples:
 
