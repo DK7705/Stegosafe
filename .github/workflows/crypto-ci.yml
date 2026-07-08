@@ -1,6 +1,9 @@
 name: Crypto CI
 
 on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
   push:
     paths:
       - "crates/crypto/**"
@@ -177,18 +180,4 @@ jobs:
           name: fuzz-crashes
           path: crates/crypto/fuzz/artifacts/
 
-# Schedule trigger for nightly fuzz runs
-# (placed at top-level `on:` would conflict, so we use a separate workflow_dispatch
-#  and the `if` condition above to gate the fuzz job)
-  schedule-trigger:
-    # This is a placeholder — the actual schedule must be in the `on:` block.
-    # Adding it here for documentation; see the note below.
-    if: false
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "placeholder"
 
-# NOTE: To enable nightly fuzzing, add this to the `on:` block above:
-#   schedule:
-#     - cron: '0 3 * * *'
-#   workflow_dispatch:
