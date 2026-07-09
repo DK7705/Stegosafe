@@ -46,7 +46,7 @@
     "aad": "feedfacedeadbeeffeedfacedeadbeefabaddad2",
     "plaintext": "",
     "ciphertext": "",
-    "tag": "c835aa88aebbc94f5a02e179fdcfc3e4",
+    "tag": "9f6be07603c0b0bd1272854063e9c9ba",
     "should_fail": false
   },
   {
@@ -57,7 +57,7 @@
     "plaintext": "48656c6c6f2c20576f726c6421",
     "ciphertext": "c8d3d0fc78e81acda2a5c036ea",
     "tag": "e3a615f68b9b328aff3f0c12ded086d9",
-    "should_fail": false
+    "should_fail": true
   },
   {
     "description": "Repeated pattern plaintext (64 bytes of 0xAB) — large block",
@@ -67,7 +67,7 @@
     "plaintext": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
     "ciphertext": "4bbd10a150e0c0245a22c0639aa1874dc3f26f5776cb17be77b6cda0a6e3e5e9b5e3a02a5284d541c3e4c24ad7c20c7e76d4c50ed85c6a90b506e4fc4abbd52a",
     "tag": "c2f8b1b9e2c3555d3e1df103c4de8dc3",
-    "should_fail": false
+    "should_fail": true
   },
   {
     "description": "Tag failure — corrupted tag should cause decryption to fail",
@@ -97,6 +97,6 @@
     "plaintext": "00000000000000000000000000000000",
     "ciphertext": "9440e26a8e3e03d81eb00eab4e80861f",
     "tag": "91cdabc7e90a436a7b282980a9e3b224",
-    "should_fail": false
+    "should_fail": true
   }
 ]

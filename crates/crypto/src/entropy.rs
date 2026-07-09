@@ -13,6 +13,8 @@
 
 use std::sync::Mutex;
 
+
+
 use sha2::{Sha256, Digest};
 
 use crate::error::CryptoError;
@@ -284,7 +286,7 @@ impl EntropyOracle {
     /// startup health check (3 consecutive reads must not all be identical).
     #[cfg(target_arch = "x86_64")]
     fn check_trng_available() -> bool {
-        let mut rng = match rdrand::RdRand::new() {
+        let rng = match rdrand::RdRand::new() {
             Ok(rng) => rng,
             Err(_) => return false,
         };
@@ -317,7 +319,7 @@ impl EntropyOracle {
     /// Fill buffer from hardware TRNG in 8-byte chunks.
     #[cfg(target_arch = "x86_64")]
     fn fill_trng(buf: &mut [u8]) -> bool {
-        let mut rng = match rdrand::RdRand::new() {
+        let rng = match rdrand::RdRand::new() {
             Ok(rng) => rng,
             Err(_) => return false,
         };

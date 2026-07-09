@@ -54,6 +54,7 @@ const ZSTD_LEVEL: i32 = 3;
 /// Use [`AeadKey::new`] to construct from raw key bytes and an
 /// [`EntropyOracle`] for nonce generation. There is no fallible-free
 /// constructor — entropy is always required.
+#[derive(Debug)]
 pub struct AeadKey {
     key: Zeroizing<[u8; 32]>,
     nonce_mgr: Mutex<NonceManager>,

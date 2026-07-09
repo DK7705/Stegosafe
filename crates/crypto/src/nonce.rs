@@ -34,6 +34,7 @@ use crate::error::CryptoError;
 /// Produces unique 96-bit nonces using a random base + counter hybrid.
 /// Not `Clone` or `Copy` — must be explicitly wrapped in synchronization
 /// primitives if shared.
+#[derive(Debug)]
 pub struct NonceManager {
     /// 64-bit random base (high 8 bytes of each nonce).
     base: [u8; 8],

@@ -43,6 +43,7 @@ const INFO_PARAMS: &[u8] = b"stego-v1-params";
 ///
 /// Provides `sign` and `verify` operations. The underlying key material
 /// is wrapped in [`Zeroizing`] and cleared when the key is dropped.
+#[derive(Debug)]
 pub struct HmacKey {
     key: Zeroizing<[u8; 32]>,
 }
@@ -79,6 +80,14 @@ impl HmacKey {
         hmac::Mac::verify_slice(mac, tag)
             .map_err(|_| CryptoError::DecryptionFailed)
     }
+
+    /// Returns a reference to the underlying key bytes.
+    ///
+    /// Used by the CLI to pass placement key material to the
+    /// steganography engine for backward-compatible extraction.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.key
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -88,15 +97,16 @@ impl HmacKey {
 /// Bundle of derived session keys produced by [`derive_session_keys`].
 ///
 /// All keys are cryptographically independent — derived from the same
-/// shared secret but with different HKDF info strings.
+/// Container for all keys derived for a single steganographic session.
+#[derive(Debug)]
 pub struct SessionKeys {
-    /// AES-256-GCM encryption key for payload encryption.
+    /// Encryption key for payload (ChaCha20-Poly1305).
     pub enc_key: AeadKey,
-    /// HMAC-SHA-256 key for cover image integrity verification (Phase 4).
+    /// MAC key for metadata authentication.
     pub mac_key: HmacKey,
-    /// 32-byte seed for Phase 3 technique selection RNG.
+    /// Seed for determining the embedding technique.
     pub technique_seed: Zeroizing<[u8; 32]>,
-    /// 32-byte seed for Phase 3 parameter randomisation.
+    /// Seed for randomising embedding parameters (channels, bit-plane).
     pub param_seed: Zeroizing<[u8; 32]>,
 }
 

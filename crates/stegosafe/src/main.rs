@@ -1,13 +1,12 @@
-use std::cmp::Ordering;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use argon2::{Algorithm, Argon2, Params, Version};
 use clap::{Parser, Subcommand};
-use image::{DynamicImage, GenericImageView};
 use serde::{Deserialize, Serialize};
 use stegosafe_crypto::{derive_session_keys, EntropyOracle, HmacKey};
+use stegosafe_stego::{StegoEngine, EmbedParams, EmbedParamsMeta, derive_placement_key};
 use zeroize::Zeroizing;
 
 const SESSION_NONCE_LEN: usize = 12;
@@ -17,7 +16,6 @@ const ARGON2_MEMORY_KIB: u32 = 64 * 1024;
 const ARGON2_TIME_COST: u32 = 3;
 const ARGON2_PARALLELISM: u32 = 1;
 const METADATA_VERSION: u8 = 1;
-const EMBEDDING_ALGORITHM: &str = "lsb-random-hmac-v1";
 const KDF_ALGORITHM: &str = "argon2id-v1";
 
 #[derive(Parser)]
@@ -76,10 +74,8 @@ enum StegoError {
     MissingSecret,
     #[error("secret input is invalid")]
     InvalidSecret,
-    #[error("payload too large for cover image")]
-    PayloadTooLarge,
-    #[error("malformed stego image")]
-    MalformedStegoImage,
+    #[error("engine error: {0}")]
+    Engine(#[from] stegosafe_stego::StegoError),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +84,8 @@ struct Metadata {
     session_nonce: String,
     kdf: KdfMetadata,
     embedding: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    embed_params: Option<EmbedParamsMeta>,
     encrypted_len: usize,
     mac: String,
 }
@@ -143,19 +141,23 @@ fn embed(
     let encrypted = keys.enc_key.encrypt(&payload, context.as_bytes())
         .context("payload encryption failed")?;
 
+    let cover = image::open(cover_path).context("failed to open cover image")?;
+
+    let engine = StegoEngine::new();
+    let (stego, embed_result) = engine.embed(
+        &cover, &encrypted, &*keys.technique_seed, &*keys.param_seed
+    ).context("failed to embed payload into cover image")?;
+
     let mut metadata = Metadata {
         version: METADATA_VERSION,
         session_nonce: hex::encode(session_nonce),
         kdf,
-        embedding: EMBEDDING_ALGORITHM.to_string(),
+        embedding: embed_result.technique_name,
+        embed_params: Some(embed_result.params_meta),
         encrypted_len: encrypted.len(),
         mac: String::new(),
     };
     metadata.mac = hex::encode(metadata_mac(&keys.mac_key, &metadata, context, &encrypted)?);
-
-    let cover = image::open(cover_path).context("failed to open cover image")?;
-    let stego = embed_payload_in_image(&cover, &encrypted, &keys.mac_key)
-        .context("failed to embed payload into cover image")?;
 
     stego.save(output_path).context("failed to save stego image")?;
     fs::write(output_path.with_extension("meta"), serde_json::to_vec_pretty(&metadata)?)
@@ -182,9 +184,20 @@ fn extract(
     let keys = derive_session_keys(&*root_key, &session_nonce, &entropy)
         .context("failed to derive session keys")?;
 
+    let embed_params = if let Some(ref meta_params) = metadata.embed_params {
+        let placement_key = derive_placement_key(&*keys.param_seed);
+        EmbedParams::from_meta(meta_params, placement_key)
+            .ok_or_else(|| anyhow::anyhow!("invalid embed params in metadata"))?
+    } else {
+        // Legacy metadata without embed_params — use mac_key for placement
+        EmbedParams::legacy(*keys.mac_key.as_bytes())
+    };
+
+    let engine = StegoEngine::new();
     let stego = image::open(stego_path).context("failed to open stego image")?;
-    let payload = extract_payload_from_image(&stego, metadata.encrypted_len, &keys.mac_key)
-        .context("failed to extract payload from stego image")?;
+    let payload = engine.extract(
+        &stego, &metadata.embedding, &embed_params, metadata.encrypted_len
+    ).context("failed to extract payload from stego image")?;
 
     let expected_mac = hex::decode(&metadata.mac).map_err(|_| StegoError::InvalidHex)?;
     keys.mac_key
@@ -274,9 +287,6 @@ fn validate_metadata(metadata: &Metadata) -> Result<(), StegoError> {
     if metadata.version != METADATA_VERSION {
         return Err(StegoError::Metadata("unsupported metadata version"));
     }
-    if metadata.embedding != EMBEDDING_ALGORITHM {
-        return Err(StegoError::Metadata("unsupported embedding algorithm"));
-    }
     if metadata.mac.is_empty() {
         return Err(StegoError::Metadata("missing metadata MAC"));
     }
@@ -303,6 +313,10 @@ fn metadata_mac_input(metadata: &Metadata, context: &str, payload: &[u8]) -> Vec
     input.extend_from_slice(format!("kdf_parallelism:{}\n", metadata.kdf.parallelism).as_bytes());
     input.extend_from_slice(format!("kdf_output_len:{}\n", metadata.kdf.output_len).as_bytes());
     input.extend_from_slice(format!("embedding:{}\n", metadata.embedding).as_bytes());
+    if let Some(ref params) = metadata.embed_params {
+        input.extend_from_slice(format!("embed_channels:{}\n", params.channels).as_bytes());
+        input.extend_from_slice(format!("embed_bit_plane:{}\n", params.bit_plane).as_bytes());
+    }
     input.extend_from_slice(format!("encrypted_len:{}\n", metadata.encrypted_len).as_bytes());
     input.extend_from_slice(format!("context:{}\n", context).as_bytes());
     input.extend_from_slice(b"payload:\n");
@@ -329,160 +343,9 @@ fn parse_session_nonce(hex_str: &str) -> Result<[u8; SESSION_NONCE_LEN], StegoEr
     Ok(nonce)
 }
 
-fn embed_payload_in_image(
-    image: &DynamicImage,
-    payload: &[u8],
-    placement_key: &HmacKey,
-) -> Result<DynamicImage, StegoError> {
-    let channel_count = checked_channel_count(image)?;
-    let max_payload = max_payload_bytes(channel_count)?;
-    if payload.len() > max_payload || payload.len() > u32::MAX as usize {
-        return Err(StegoError::PayloadTooLarge);
-    }
-
-    let mut data = Vec::with_capacity(payload.len() + 4);
-    data.extend_from_slice(&(payload.len() as u32).to_be_bytes());
-    data.extend_from_slice(payload);
-
-    let positions = placement_positions(placement_key, channel_count, data.len() * 8)?;
-    let mut img = image.to_rgb8();
-    let raw = img.as_mut();
-
-    for (channel_index, bit) in positions.iter().zip(bits_from_bytes(&data)) {
-        raw[*channel_index] = (raw[*channel_index] & 0xFE) | bit;
-    }
-
-    Ok(DynamicImage::ImageRgb8(img))
-}
-
-fn extract_payload_from_image(
-    image: &DynamicImage,
-    expected_len: usize,
-    placement_key: &HmacKey,
-) -> Result<Vec<u8>, StegoError> {
-    let channel_count = checked_channel_count(image)?;
-    let max_payload = max_payload_bytes(channel_count)?;
-    if expected_len > max_payload || expected_len > u32::MAX as usize {
-        return Err(StegoError::MalformedStegoImage);
-    }
-
-    let total_bytes = expected_len
-        .checked_add(4)
-        .ok_or(StegoError::MalformedStegoImage)?;
-    let positions = placement_positions(placement_key, channel_count, total_bytes * 8)?;
-    let img = image.to_rgb8();
-    let raw = img.as_raw();
-
-    let mut data = vec![0u8; total_bytes];
-    for (byte_index, byte) in data.iter_mut().enumerate() {
-        let mut value = 0u8;
-        for bit_index in 0..8 {
-            let pos = positions
-                .get(byte_index * 8 + bit_index)
-                .ok_or(StegoError::MalformedStegoImage)?;
-            value = (value << 1) | (raw[*pos] & 1);
-        }
-        *byte = value;
-    }
-
-    let declared_len = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    if declared_len != expected_len {
-        return Err(StegoError::MalformedStegoImage);
-    }
-
-    Ok(data[4..].to_vec())
-}
-
-fn checked_channel_count(image: &DynamicImage) -> Result<usize, StegoError> {
-    let (width, height) = image.dimensions();
-    (width as usize)
-        .checked_mul(height as usize)
-        .and_then(|pixels| pixels.checked_mul(3))
-        .ok_or(StegoError::PayloadTooLarge)
-}
-
-fn max_payload_bytes(channel_count: usize) -> Result<usize, StegoError> {
-    let capacity_bytes = channel_count / 8;
-    capacity_bytes
-        .checked_sub(4)
-        .ok_or(StegoError::PayloadTooLarge)
-}
-
-fn bits_from_bytes(data: &[u8]) -> impl Iterator<Item = u8> + '_ {
-    data.iter()
-        .flat_map(|byte| (0..8).rev().map(move |bit| (byte >> bit) & 1))
-}
-
-fn placement_positions(
-    key: &HmacKey,
-    channel_count: usize,
-    needed: usize,
-) -> Result<Vec<usize>, StegoError> {
-    if needed > channel_count {
-        return Err(StegoError::PayloadTooLarge);
-    }
-
-    let mut scored = Vec::with_capacity(channel_count);
-    for index in 0..channel_count {
-        let mut input = Vec::with_capacity(32);
-        input.extend_from_slice(b"stegosafe-placement-v1:");
-        input.extend_from_slice(&(index as u64).to_be_bytes());
-        let score = key.sign(&input)?;
-        scored.push((score, index));
-    }
-
-    scored.sort_unstable_by(|(score_a, index_a), (score_b, index_b)| match score_a.cmp(score_b) {
-        Ordering::Equal => index_a.cmp(index_b),
-        other => other,
-    });
-
-    Ok(scored.into_iter().take(needed).map(|(_, index)| index).collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{ImageBuffer, Rgb};
-
-    fn test_key() -> HmacKey {
-        HmacKey::from_bytes([0x42; 32])
-    }
-
-    fn test_image(width: u32, height: u32) -> DynamicImage {
-        let img = ImageBuffer::from_fn(width, height, |x, y| {
-            Rgb([
-                (x % 251) as u8,
-                (y % 251) as u8,
-                ((x + y) % 251) as u8,
-            ])
-        });
-        DynamicImage::ImageRgb8(img)
-    }
-
-    #[test]
-    fn extraction_rejects_declared_len_larger_than_capacity() {
-        let image = test_image(4, 4);
-        let result = extract_payload_from_image(&image, 10_000, &test_key());
-        assert!(matches!(result, Err(StegoError::MalformedStegoImage)));
-    }
-
-    #[test]
-    fn extraction_rejects_embedded_len_mismatch() {
-        let image = test_image(32, 32);
-        let payload = b"short payload";
-        let stego = embed_payload_in_image(&image, payload, &test_key()).expect("embed");
-        let result = extract_payload_from_image(&stego, payload.len() + 1, &test_key());
-        assert!(matches!(result, Err(StegoError::MalformedStegoImage)));
-    }
-
-    #[test]
-    fn randomized_embedding_round_trip() {
-        let image = test_image(64, 64);
-        let payload = b"round trip payload";
-        let stego = embed_payload_in_image(&image, payload, &test_key()).expect("embed");
-        let recovered = extract_payload_from_image(&stego, payload.len(), &test_key()).expect("extract");
-        assert_eq!(recovered, payload);
-    }
 
     #[test]
     fn trims_one_trailing_newline() {
